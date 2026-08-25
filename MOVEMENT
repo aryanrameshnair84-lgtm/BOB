@@ -1,1 +1,106 @@
+// --- Motor Pin Definitions ---
+// Adjust these if your motor driver is wired to different pins
+#define MOTOR_A_IN1  12
+#define MOTOR_A_IN2  13
+#define MOTOR_B_IN1  26
+#define MOTOR_B_IN2  27
 
+void setup() {
+  Serial.begin(115200);
+
+  // Set all motor control pins as outputs
+  pinMode(MOTOR_A_IN1, OUTPUT);
+  pinMode(MOTOR_A_IN2, OUTPUT);
+  pinMode(MOTOR_B_IN1, OUTPUT);
+  pinMode(MOTOR_B_IN2, OUTPUT);
+
+  Serial.println("--- Bob's Movement Test Initialized ---");
+  Serial.println("Commands:");
+  Serial.println("  'f' = Move Forward");
+  Serial.println("  'b' = Move Backward");
+  Serial.println("  'r' = Turn Right");
+  Serial.println("  'l' = Turn Left");
+  Serial.println("  's' = Stop");
+}
+
+void loop() {
+  // Check if a command has been sent via the Serial Monitor
+  if (Serial.available() > 0) {
+    char command = Serial.read();
+    
+    // Ignore accidental line breaks or carriage returns
+    if (command == '\n' || command == '\r') return;
+
+    switch (command) {
+      case 'f':
+      case 'F':
+        moveForward();
+        Serial.println("-> Moving Forward");
+        break;
+        
+      case 'b':
+      case 'B':
+        moveBackward();
+        Serial.println("-> Moving Backward");
+        break;
+        
+      case 'r':
+      case 'R':
+        turnRight();
+        Serial.println("-> Turning Right");
+        break;
+
+      case 'l':
+      case 'L':
+        turnLeft();
+        Serial.println("-> Turning Left");
+        break;
+        
+      case 's':
+      case 'S':
+        stopRobot();
+        Serial.println("-> Stopped");
+        break;
+        
+      default:
+        Serial.println("Invalid command! Use f, b, r, l, or s.");
+        break;
+    }
+  }
+}
+
+// --- Movement Functions ---
+void moveForward() {
+  digitalWrite(MOTOR_A_IN1, HIGH);
+  digitalWrite(MOTOR_A_IN2, LOW);
+  digitalWrite(MOTOR_B_IN1, HIGH);
+  digitalWrite(MOTOR_B_IN2, LOW);
+}
+
+void moveBackward() {
+  digitalWrite(MOTOR_A_IN1, LOW);
+  digitalWrite(MOTOR_A_IN2, HIGH);
+  digitalWrite(MOTOR_B_IN1, LOW);
+  digitalWrite(MOTOR_B_IN2, HIGH);
+}
+
+void turnRight() {
+  digitalWrite(MOTOR_A_IN1, HIGH);
+  digitalWrite(MOTOR_A_IN2, LOW);
+  digitalWrite(MOTOR_B_IN1, LOW);
+  digitalWrite(MOTOR_B_IN2, HIGH);
+}
+
+void turnLeft() {
+  digitalWrite(MOTOR_A_IN1, LOW);
+  digitalWrite(MOTOR_A_IN2, HIGH);
+  digitalWrite(MOTOR_B_IN1, HIGH);
+  digitalWrite(MOTOR_B_IN2, LOW);
+}
+
+void stopRobot() {
+  digitalWrite(MOTOR_A_IN1, LOW);
+  digitalWrite(MOTOR_A_IN2, LOW);
+  digitalWrite(MOTOR_B_IN1, LOW);
+  digitalWrite(MOTOR_B_IN2, LOW);
+}
