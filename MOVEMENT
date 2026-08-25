@@ -1,106 +1,126 @@
-// --- Motor Pin Definitions ---
-// Adjust these if your motor driver is wired to different pins
-#define MOTOR_A_IN1  12
-#define MOTOR_A_IN2  13
-#define MOTOR_B_IN1  26
-#define MOTOR_B_IN2  27
+// --- Motor Pin Definitions for 4WD ---
+// Left Side Motors (Front-Left & Rear-Left wired together)
+#define LEFT_MOTOR_IN1  12
+#define LEFT_MOTOR_IN2  13
+
+// Right Side Motors (Front-Right & Rear-Right wired together)
+#define RIGHT_MOTOR_IN1 26
+#define RIGHT_MOTOR_IN2 27
+
+// --- Microphone Sensor Pin ---
+#define MIC_PIN         34
+
+// State variables for toggle or commands
+bool isWalking = false;
 
 void setup() {
   Serial.begin(115200);
 
-  // Set all motor control pins as outputs
-  pinMode(MOTOR_A_IN1, OUTPUT);
-  pinMode(MOTOR_A_IN2, OUTPUT);
-  pinMode(MOTOR_B_IN1, OUTPUT);
-  pinMode(MOTOR_B_IN2, OUTPUT);
+  // Set motor control pins as outputs
+  pinMode(LEFT_MOTOR_IN1, OUTPUT);
+  pinMode(LEFT_MOTOR_IN2, OUTPUT);
+  pinMode(RIGHT_MOTOR_IN1, OUTPUT);
+  pinMode(RIGHT_MOTOR_IN2, OUTPUT);
 
-  Serial.println("--- Bob's Movement Test Initialized ---");
-  Serial.println("Commands:");
-  Serial.println("  'f' = Move Forward");
-  Serial.println("  'b' = Move Backward");
-  Serial.println("  'r' = Turn Right");
-  Serial.println("  'l' = Turn Left");
-  Serial.println("  's' = Stop");
+  // Set microphone pin as input
+  pinMode(MIC_PIN, INPUT);
+
+  Serial.println("--- Bob's 4WD & Microphone Control Initialized ---");
+  Serial.println("Type 'f' = Forward, 'b' = Backward, 'r' = Right, 'l' = Left, 's' = Stop");
 }
 
 void loop() {
-  // Check if a command has been sent via the Serial Monitor
+  // 1. Check for manual commands typed in the Serial Monitor / Bluetooth
   if (Serial.available() > 0) {
     char command = Serial.read();
-    
-    // Ignore accidental line breaks or carriage returns
-    if (command == '\n' || command == '\r') return;
-
-    switch (command) {
-      case 'f':
-      case 'F':
-        moveForward();
-        Serial.println("-> Moving Forward");
-        break;
-        
-      case 'b':
-      case 'B':
-        moveBackward();
-        Serial.println("-> Moving Backward");
-        break;
-        
-      case 'r':
-      case 'R':
-        turnRight();
-        Serial.println("-> Turning Right");
-        break;
-
-      case 'l':
-      case 'L':
-        turnLeft();
-        Serial.println("-> Turning Left");
-        break;
-        
-      case 's':
-      case 'S':
-        stopRobot();
-        Serial.println("-> Stopped");
-        break;
-        
-      default:
-        Serial.println("Invalid command! Use f, b, r, l, or s.");
-        break;
+    if (command != '\n' && command != '\r') {
+      executeCommand(command);
     }
+  }
+
+  // 2. Check microphone input (e.g., a loud clap or voice spike)
+  int micValue = analogRead(MIC_PIN);
+  
+  // Adjust threshold (e.g., 2000) based on your room's baseline noise via Serial Plotter
+  if (micValue > 2000) { 
+    isWalking = !isWalking; // Toggle walking state on loud sound/clap
+    
+    if (isWalking) {
+      Serial.println("-> Mic Triggered: Bob starts walking forward!");
+      moveForward();
+    } else {
+      Serial.println("-> Mic Triggered: Bob stops.");
+      stopRobot();
+    }
+    
+    delay(1000); // Debounce delay so it doesn't trigger repeatedly
   }
 }
 
-// --- Movement Functions ---
+// --- Command Parser ---
+void executeCommand(char cmd) {
+  switch (cmd) {
+    case 'f': case 'F':
+      moveForward();
+      Serial.println("-> 4WD Moving Forward");
+      break;
+    case 'b': case 'B':
+      moveBackward();
+      Serial.println("-> 4WD Moving Backward");
+      break;
+    case 'r': case 'R':
+      turnRight();
+      Serial.println("-> 4WD Turning Right (Pivoting)");
+      break;
+    case 'l': case 'L':
+      turnLeft();
+      Serial.println("-> 4WD Turning Left (Pivoting)");
+      break;
+    case 's': case 'S':
+      stopRobot();
+      Serial.println("-> 4WD Stopped");
+      break;
+    default:
+      Serial.println("Unknown command.");
+      break;
+  }
+}
+
+// --- 4WD Movement Functions ---
+// All left-side wheels move together, all right-side wheels move together
 void moveForward() {
-  digitalWrite(MOTOR_A_IN1, HIGH);
-  digitalWrite(MOTOR_A_IN2, LOW);
-  digitalWrite(MOTOR_B_IN1, HIGH);
-  digitalWrite(MOTOR_B_IN2, LOW);
+  digitalWrite(LEFT_MOTOR_IN1, HIGH);
+  digitalWrite(LEFT_MOTOR_IN2, LOW);
+  digitalWrite(RIGHT_MOTOR_IN1, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN2, LOW);
 }
 
 void moveBackward() {
-  digitalWrite(MOTOR_A_IN1, LOW);
-  digitalWrite(MOTOR_A_IN2, HIGH);
-  digitalWrite(MOTOR_B_IN1, LOW);
-  digitalWrite(MOTOR_B_IN2, HIGH);
+  digitalWrite(LEFT_MOTOR_IN1, LOW);
+  digitalWrite(LEFT_MOTOR_IN2, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN1, LOW);
+  digitalWrite(RIGHT_MOTOR_IN2, HIGH);
 }
 
 void turnRight() {
-  digitalWrite(MOTOR_A_IN1, HIGH);
-  digitalWrite(MOTOR_A_IN2, LOW);
-  digitalWrite(MOTOR_B_IN1, LOW);
-  digitalWrite(MOTOR_B_IN2, HIGH);
+  // Left side moves forward, Right side reverses -> pivots clockwise on the spot
+  digitalWrite(LEFT_MOTOR_IN1, HIGH);
+  digitalWrite(LEFT_MOTOR_IN2, LOW);
+  digitalWrite(RIGHT_MOTOR_IN1, LOW);
+  digitalWrite(RIGHT_MOTOR_IN2, HIGH);
 }
 
 void turnLeft() {
-  digitalWrite(MOTOR_A_IN1, LOW);
-  digitalWrite(MOTOR_A_IN2, HIGH);
-  digitalWrite(MOTOR_B_IN1, HIGH);
-  digitalWrite(MOTOR_B_IN2, LOW);
+  // Left side reverses, Right side moves forward -> pivots counter-clockwise
+  digitalWrite(LEFT_MOTOR_IN1, LOW);
+  digitalWrite(LEFT_MOTOR_IN2, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN1, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN2, LOW);
 }
 
 void stopRobot() {
-  digitalWrite(MOTOR_A_IN1, LOW);
-  digitalWrite(MOTOR_A_IN2, LOW);
-  digitalWrite(MOTOR_B_IN1, LOW);
-  digitalWrite(MOTOR_B_IN2, LOW);
+  digitalWrite(LEFT_MOTOR_IN1, LOW);
+  digitalWrite(LEFT_MOTOR_IN2, LOW);
+  digitalWrite(RIGHT_MOTOR_IN1, LOW);
+  digitalWrite(RIGHT_MOTOR_IN2, LOW);
 }
