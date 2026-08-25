@@ -1,106 +1,166 @@
-#include <BleGamepad.h>
-
-// Initialize the BLE Gamepad name
-BleGamepad bleGamepad("Bob_Robot_Controller", "Exhibition", 100);
-
 // --- Motor Pin Definitions for 4WD ---
 #define LEFT_MOTOR_IN1  12
 #define LEFT_MOTOR_IN2  13
 #define RIGHT_MOTOR_IN1 26
 #define RIGHT_MOTOR_IN2 27
 
+// --- Ultrasonic Sensor Pin Definitions ---
+#define TRIG_PIN        5
+#define ECHO_PIN        18
+
 // --- Microphone Sensor Pin ---
 #define MIC_PIN         34
 
-bool isWalking = false;
+// Distance threshold in centimeters to trigger obstacle avoidance
+#define SAFE_DISTANCE   20 
+
+// Robot State Control
+bool isRunning = false; 
 
 void setup() {
   Serial.begin(115200);
 
-  // Initialize Motor Pins
+  // Initialize Motor Pins as Outputs
   pinMode(LEFT_MOTOR_IN1, OUTPUT);
   pinMode(LEFT_MOTOR_IN2, OUTPUT);
   pinMode(RIGHT_MOTOR_IN1, OUTPUT);
   pinMode(RIGHT_MOTOR_IN2, OUTPUT);
 
+  // Initialize Ultrasonic Pins
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
   // Initialize Microphone Pin
   pinMode(MIC_PIN, INPUT);
 
-  // Start the BLE Gamepad service
-  bleGamepad.begin();
+  // Seed random generator for varied turns
+  randomSeed(analogRead(0));
 
-  Serial.println("--- Bob's 4WD, WASD, Mic & Bluetooth Controller Ready ---");
-  Serial.println("Waiting for Bluetooth Controller connection...");
+  Serial.println("--- Bob is Waiting for Trigger (Clap or 'g' in Serial) ---");
+  stopRobot();
 }
 
 void loop() {
-  // 1. Check for manual WASD commands typed in the Serial Monitor
+  // 1. Check for Serial / Keyboard input ('g' to start, 'x' or 's' to stop)
   if (Serial.available() > 0) {
-    char command = Serial.read();
-    if (command != '\n' && command != '\r') {
-      executeCommand(command);
+    char cmd = tolower(Serial.read());
+    if (cmd == 'g' || cmd == 'w') {
+      isRunning = true;
+      Serial.println("-> [Command] Started Autonomous Freestyle Mode!");
+    } 
+    else if (cmd == 'x' || cmd == 's') {
+      isRunning = false;
+      stopRobot();
+      Serial.println("-> [Command] Stopped!");
     }
   }
 
-  // 2. Check microphone input (clap or loud sound toggle)
+  // 2. Check microphone input for a clap trigger
   int micValue = analogRead(MIC_PIN);
   if (micValue > 2000) { 
-    isWalking = !isWalking;
-    if (isWalking) {
-      Serial.println("-> [Mic] Bob starts walking forward!");
-      moveForward();
+    isRunning = !isRunning; 
+    if (isRunning) {
+      Serial.println("-> [Mic Clap] Started Autonomous Freestyle Mode!");
     } else {
-      Serial.println("-> [Mic] Bob stops.");
       stopRobot();
+      Serial.println("-> [Mic Clap] Stopped!");
     }
     delay(1000); // Debounce delay
   }
 
-  // 3. Check if a Bluetooth device is connected
-  if (bleGamepad.isConnected()) {
-    // When acting as a BLE gamepad server, the ESP32 receives data packets 
-    // via automated report callbacks. For simple custom wireless remote driving, 
-    // it's much more reliable to control Bob via Serial/Bluetooth Terminal apps 
-    // (like an Android Bluetooth terminal app sending W, A, S, D chars) 
-    // or keep using the WASD keys while connected.
+  // 3. If running, execute robot-vacuum obstacle avoidance logic
+  if (isRunning) {
+    long distance = getDistance();
+
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+
+    if (distance > 0 && distance < SAFE_DISTANCE) {
+      // Obstacle detected! Dodge like a robot vacuum
+      Serial.println("-> Obstacle detected! Dodging...");
+      
+      stopRobot();
+      delay(300);
+
+      // Back up a little bit
+      moveBackward();
+      delay(600);
+      stopRobot();
+      delay(200);
+
+      // Turn randomly left or right
+      if (random(0, 2) == 0) {
+        turnLeft();
+        Serial.println("-> Turning Left");
+      } else {
+        turnRight();
+        Serial.println("-> Turning Right");
+      }
+      delay(800); 
+      stopRobot();
+      delay(200);
+    } 
+    else {
+      // Clear path, keep cruising forward
+      moveForward();
+    }
+    
+    delay(50); 
+  } else {
+    stopRobot();
   }
 }
 
-// --- Command Parser for Serial/WASD/Remote ---
-void executeCommand(char cmd) {
-  cmd = tolower(cmd);
-  switch (cmd) {
-    case 'w': moveForward(); Serial.println("-> [Control] Forward"); break;
-    case 's': moveBackward(); Serial.println("-> [Control] Backward"); break;
-    case 'a': turnLeft(); Serial.println("-> [Control] Left"); break;
-    case 'd': turnRight(); Serial.println("-> [Control] Right"); break;
-    case 'x': stopRobot(); Serial.println("-> [Control] Stop"); break;
-    default: Serial.println("Unknown command."); break;
+// --- Ultrasonic Measurement Function ---
+long getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000); 
+  long distance = duration * 0.034 / 2;
+  
+  if (duration == 0) {
+    return 999; 
   }
+  return distance;
 }
 
 // --- 4WD Movement Functions ---
 void moveForward() {
-  digitalWrite(LEFT_MOTOR_IN1, HIGH);  digitalWrite(LEFT_MOTOR_IN2, LOW);
-  digitalWrite(RIGHT_MOTOR_IN1, HIGH); digitalWrite(RIGHT_MOTOR_IN2, LOW);
+  digitalWrite(LEFT_MOTOR_IN1, HIGH);  
+  digitalWrite(LEFT_MOTOR_IN2, LOW);
+  digitalWrite(RIGHT_MOTOR_IN1, HIGH); 
+  digitalWrite(RIGHT_MOTOR_IN2, LOW);
 }
 
 void moveBackward() {
-  digitalWrite(LEFT_MOTOR_IN1, LOW);  digitalWrite(LEFT_MOTOR_IN2, HIGH);
-  digitalWrite(RIGHT_MOTOR_IN1, LOW); digitalWrite(RIGHT_MOTOR_IN2, HIGH);
+  digitalWrite(LEFT_MOTOR_IN1, LOW);  
+  digitalWrite(LEFT_MOTOR_IN2, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN1, LOW); 
+  digitalWrite(RIGHT_MOTOR_IN2, HIGH);
 }
 
 void turnRight() {
-  digitalWrite(LEFT_MOTOR_IN1, HIGH);  digitalWrite(LEFT_MOTOR_IN2, LOW);
-  digitalWrite(RIGHT_MOTOR_IN1, LOW); digitalWrite(RIGHT_MOTOR_IN2, HIGH);
+  digitalWrite(LEFT_MOTOR_IN1, HIGH);  
+  digitalWrite(LEFT_MOTOR_IN2, LOW);
+  digitalWrite(RIGHT_MOTOR_IN1, LOW); 
+  digitalWrite(RIGHT_MOTOR_IN2, HIGH);
 }
 
 void turnLeft() {
-  digitalWrite(LEFT_MOTOR_IN1, LOW);  digitalWrite(LEFT_MOTOR_IN2, HIGH);
-  digitalWrite(RIGHT_MOTOR_IN1, HIGH); digitalWrite(RIGHT_MOTOR_IN2, LOW);
+  digitalWrite(LEFT_MOTOR_IN1, LOW);  
+  digitalWrite(LEFT_MOTOR_IN2, HIGH);
+  digitalWrite(RIGHT_MOTOR_IN1, HIGH); 
+  digitalWrite(RIGHT_MOTOR_IN2, LOW);
 }
 
 void stopRobot() {
-  digitalWrite(LEFT_MOTOR_IN1, LOW);  digitalWrite(LEFT_MOTOR_IN2, LOW);
-  digitalWrite(RIGHT_MOTOR_IN1, LOW); digitalWrite(RIGHT_MOTOR_IN2, LOW);
+  digitalWrite(LEFT_MOTOR_IN1, LOW);  
+  digitalWrite(LEFT_MOTOR_IN2, LOW);
+  digitalWrite(RIGHT_MOTOR_IN1, LOW); 
+  digitalWrite(RIGHT_MOTOR_IN2, LOW);
 }
