@@ -1,1 +1,326 @@
+#include <Arduino.h>
+#include "ESP_I2S.h"
+#include "ESP_SR.h"
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
 
+
+// ==========================================================
+// SPEAKER I2S
+// ==========================================================
+
+#define SPEAKER_BCLK  18
+#define SPEAKER_LRCLK 19
+#define SPEAKER_DOUT  20
+
+
+I2SClass speakerI2S;
+
+
+// ==========================================================
+// MICROPHONE I2S
+// ==========================================================
+
+#define I2S_BCLK 17
+#define I2S_WS   15
+#define I2S_DIN  16
+
+#define SAMPLE_RATE 16000
+
+
+I2SClass i2s;
+
+
+// ==========================================================
+// SD CARD
+// ==========================================================
+
+#define SD_CS 10
+
+
+// ==========================================================
+// FUNCTION DECLARATIONS
+// ==========================================================
+
+void playWav(const char *filename);
+
+void sayHi();
+void sayMyName();
+
+void handleCommand(int command);
+
+void onSpeechEvent(
+    sr_event_t event,
+    int command_id,
+    int phrase_id
+);
+
+
+// ==========================================================
+// COMMAND IDs
+// ==========================================================
+
+enum Command
+{
+    COMMAND_HI,
+    COMMAND_WALK,
+    COMMAND_SIT,
+    COMMAND_STOP,
+    COMMAND_NAME
+};
+
+
+// ==========================================================
+// COMMANDS
+// ==========================================================
+
+static const sr_cmd_t commands[] =
+{
+    {COMMAND_HI,   "hi"},
+    {COMMAND_WALK, "walk"},
+    {COMMAND_SIT,  "sit"},
+    {COMMAND_STOP, "stop"},
+    {COMMAND_NAME, "what is your name"}
+};
+
+
+// ==========================================================
+// YOUR SPEAKER FUNCTIONS
+// ==========================================================
+
+void sayHi()
+{
+    playWav("/hi.wav");
+}
+
+
+void sayMyName()
+{
+    playWav("/saymyname.wav");
+}
+
+
+// ==========================================================
+// COMMAND HANDLER
+// ==========================================================
+
+void handleCommand(int command)
+{
+    if (command == COMMAND_HI)
+    {
+        sayHi();
+    }
+
+    else if (command == COMMAND_WALK)
+    {
+        startWalking();
+    }
+
+    else if (command == COMMAND_SIT)
+    {
+        stopRobot();
+    }
+
+    else if (command == COMMAND_STOP)
+    {
+        stopRobot();
+    }
+
+    else if (command == COMMAND_NAME)
+    {
+        sayMyName();
+    }
+}
+
+
+// ==========================================================
+// ESP-SR EVENT
+// ==========================================================
+
+void onSpeechEvent(
+    sr_event_t event,
+    int command_id,
+    int phrase_id
+)
+{
+    if (event == SR_EVENT_WAKEWORD)
+    {
+        Serial.println("Wake word detected!");
+
+        ESP_SR.setMode(SR_MODE_COMMAND);
+    }
+
+
+    else if (event == SR_EVENT_COMMAND)
+    {
+        Serial.print("Command detected: ");
+        Serial.println(command_id);
+
+        handleCommand(command_id);
+
+        ESP_SR.setMode(SR_MODE_COMMAND);
+    }
+
+
+    else if (event == SR_EVENT_TIMEOUT)
+    {
+        Serial.println("Listening timeout.");
+
+        ESP_SR.setMode(SR_MODE_WAKEWORD);
+    }
+}
+
+
+// ==========================================================
+// WAV PLAYBACK
+// ==========================================================
+
+void playWav(const char *filename)
+{
+    File file = SD.open(filename);
+
+    if (!file)
+    {
+        Serial.print("Could not open audio file: ");
+        Serial.println(filename);
+
+        return;
+    }
+
+
+    Serial.print("Playing: ");
+    Serial.println(filename);
+
+
+    // Skip standard 44-byte WAV header
+
+    file.seek(44);
+
+
+    uint8_t buffer[1024];
+
+
+    while (file.available())
+    {
+        size_t bytesRead =
+            file.read(buffer, sizeof(buffer));
+
+
+        if (bytesRead > 0)
+        {
+            speakerI2S.write(buffer, bytesRead);
+        }
+    }
+
+
+    file.close();
+}
+
+
+// ==========================================================
+// SETUP
+// ==========================================================
+
+void setup()
+{
+    Serial.begin(115200);
+
+    delay(1000);
+
+
+    // ======================================================
+    // SD CARD
+    // ======================================================
+
+    if (!SD.begin(SD_CS))
+    {
+        Serial.println("SD CARD FAILED!");
+    }
+    else
+    {
+        Serial.println("SD CARD READY.");
+    }
+
+
+    // ======================================================
+    // MICROPHONE
+    // ======================================================
+
+    i2s.setPins(
+        I2S_BCLK,
+        I2S_WS,
+        -1,
+        I2S_DIN
+    );
+
+
+    i2s.begin(
+        I2S_MODE_STD,
+        SAMPLE_RATE,
+        I2S_DATA_BIT_WIDTH_16BIT,
+        I2S_SLOT_MODE_MONO,
+        I2S_STD_SLOT_LEFT
+    );
+
+
+    Serial.println("Microphone initialized.");
+
+
+    // ======================================================
+    // SPEAKER
+    // ======================================================
+
+    speakerI2S.setPins(
+        SPEAKER_BCLK,
+        SPEAKER_LRCLK,
+        SPEAKER_DOUT,
+        -1
+    );
+
+
+    speakerI2S.begin(
+        I2S_MODE_STD,
+        SAMPLE_RATE,
+        I2S_DATA_BIT_WIDTH_16BIT,
+        I2S_SLOT_MODE_MONO,
+        I2S_STD_SLOT_LEFT
+    );
+
+
+    Serial.println("Speaker initialized.");
+
+
+    // ======================================================
+    // ESP-SR
+    // ======================================================
+
+    ESP_SR.onEvent(onSpeechEvent);
+
+
+    ESP_SR.begin(
+        i2s,
+        commands,
+        sizeof(commands) / sizeof(sr_cmd_t),
+        SR_CHANNELS_MONO,
+        SR_MODE_WAKEWORD,
+        "M"
+    );
+
+
+    Serial.println();
+    Serial.println("==============================");
+    Serial.println("       BOB VOICE SYSTEM");
+    Serial.println("==============================");
+    Serial.println("Ready.");
+}
+
+
+// ==========================================================
+// LOOP
+// ==========================================================
+
+void loop()
+{
+    delay(10);
+}
